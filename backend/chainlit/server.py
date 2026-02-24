@@ -334,18 +334,20 @@ if (
 #                               TEAMS HANDLER
 # -------------------------------------------------------------------------------
 
-if os.environ.get("TEAMS_APP_ID") and os.environ.get("TEAMS_APP_PASSWORD"):
-    from botbuilder.schema import Activity
+if os.environ.get("MICROSOFT_APP_ID") and os.environ.get("MICROSOFT_APP_PASSWORD"):
+    from starlette.responses import JSONResponse, Response as StarletteResponse
 
     from chainlit.teams.app import adapter, bot
 
-    @router.post("/teams/events")
+    @router.post("/api/messages")
     async def teams_endpoint(req: Request):
-        body = await req.json()
-        activity = Activity().deserialize(body)
-        auth_header = req.headers.get("Authorization", "")
-        response = await adapter.process_activity(activity, auth_header, bot.on_turn)
-        return response
+        http_response = await adapter.process(req, bot)
+        if http_response.body is not None:
+            return JSONResponse(
+                content=http_response.body,
+                status_code=http_response.status_code,
+            )
+        return StarletteResponse(status_code=http_response.status_code)
 
 
 # -------------------------------------------------------------------------------

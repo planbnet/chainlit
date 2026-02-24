@@ -9,17 +9,11 @@ from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 import filetype
 
 if TYPE_CHECKING:
-    from botbuilder.core import TurnContext
-    from botbuilder.schema import Activity
+    from microsoft_agents.hosting.core import TurnContext
+    from microsoft_agents.activity import Activity
 
 import httpx
-from botbuilder.core import (
-    BotFrameworkAdapter,
-    BotFrameworkAdapterSettings,
-    MessageFactory,
-    TurnContext,
-)
-from botbuilder.schema import (
+from microsoft_agents.activity import (
     ActionTypes,
     Activity,
     ActivityTypes,
@@ -28,6 +22,18 @@ from botbuilder.schema import (
     ChannelAccount,
     HeroCard,
 )
+from microsoft_agents.hosting.core import (
+    MessageFactory,
+    RestChannelServiceClientFactory,
+    TurnContext,
+)
+from microsoft_agents.hosting.core.authorization import (
+    AgentAuthConfiguration,
+    AuthTypes,
+    ClaimsIdentity,
+    JwtTokenValidator,
+)
+from microsoft_agents.hosting.core.http import HttpAdapterBase, HttpResponseFactory
 
 from chainlit.config import config
 from chainlit.context import ChainlitContext, HTTPSession, context, context_var
@@ -78,7 +84,7 @@ class TeamsEmitter(BaseChainlitEmitter):
         if not attachment:
             return
 
-        await self.turn_context.send_activity(Activity(attachments=[attachment]))
+        await self.turn_context.send_activity(Activity(type=ActivityTypes.message, attachments=[attachment]))
 
     async def send_step(self, step_dict: StepDict):
         if not step_dict["type"] == "assistant_message":
@@ -113,7 +119,8 @@ class TeamsEmitter(BaseChainlitEmitter):
                 )
                 card = HeroCard(buttons=[like_button, dislike_button])
                 attachment = Attachment(
-                    content_type="application/vnd.microsoft.card.hero", content=card
+                    content_type="application/vnd.microsoft.card.hero",
+                    content=card.model_dump(by_alias=True, exclude_none=True),
                 )
                 reply.attachments = [attachment]
 
@@ -126,11 +133,129 @@ class TeamsEmitter(BaseChainlitEmitter):
         await self.send_step(step_dict)
 
 
-adapter_settings = BotFrameworkAdapterSettings(
-    app_id=os.environ.get("TEAMS_APP_ID"),
-    app_password=os.environ.get("TEAMS_APP_PASSWORD"),
+class _BotTokenProvider:
+    """MSAL-based token provider for outbound Bot Framework calls."""
+
+    def __init__(self, config: AgentAuthConfiguration):
+        import msal
+
+        self._app = msal.ConfidentialClientApplication(
+            client_id=config.CLIENT_ID,
+            client_credential=config.CLIENT_SECRET,
+            authority=config.AUTHORITY
+            or f"https://login.microsoftonline.com/{config.TENANT_ID}",
+        )
+
+    async def get_access_token(
+        self, resource_url: str, scopes: list, force_refresh: bool = False
+    ) -> str:
+        scope = scopes if scopes else [f"{resource_url}/.default"]
+        result = None
+        if not force_refresh:
+            result = self._app.acquire_token_silent(scope, account=None)
+        if not result:
+            result = self._app.acquire_token_for_client(scopes=scope)
+        if "access_token" in result:
+            return result["access_token"]
+        raise ValueError(
+            f"Failed to acquire token: {result.get('error_description', result.get('error', 'unknown'))}"
+        )
+
+    async def acquire_token_on_behalf_of(self, scopes: list, user_assertion: str) -> str:
+        raise NotImplementedError()
+
+    async def get_agentic_application_token(self, agent_app_instance_id: str):
+        raise NotImplementedError()
+
+    async def get_agentic_instance_token(self, agent_app_instance_id: str):
+        raise NotImplementedError()
+
+    async def get_agentic_user_token(
+        self, agent_app_instance_id: str, agentic_user_id: str, scopes: list
+    ):
+        raise NotImplementedError()
+
+
+class _BotConnections:
+    """Simple Connections implementation for a single-tenant bot."""
+
+    def __init__(self, config: AgentAuthConfiguration):
+        self._config = config
+        self._provider = _BotTokenProvider(config)
+
+    def get_connection(self, connection_name: str):
+        return self._provider
+
+    def get_default_connection(self):
+        return self._provider
+
+    def get_token_provider(self, claims_identity, service_url: str):
+        return self._provider
+
+    def get_default_connection_configuration(self):
+        return self._config
+
+
+class _StarletteRequestAdapter:
+    """Adapts a Starlette/FastAPI Request to HttpRequestProtocol for use with HttpAdapterBase."""
+
+    def __init__(self, request, claims_identity=None):
+        self._request = request
+        self._claims = claims_identity
+
+    @property
+    def method(self) -> str:
+        return self._request.method
+
+    @property
+    def headers(self):
+        return self._request.headers
+
+    async def json(self):
+        return await self._request.json()
+
+    def get_claims_identity(self):
+        return self._claims
+
+    def get_path_param(self, name: str) -> str:
+        return self._request.path_params.get(name, "")
+
+
+class CloudAdapter(HttpAdapterBase):
+    """FastAPI/Starlette-compatible CloudAdapter for the M365 Agents SDK."""
+
+    def __init__(self, auth_config: AgentAuthConfiguration):
+        self._auth_config = auth_config
+        self._token_validator = JwtTokenValidator(auth_config)
+        connections = _BotConnections(auth_config)
+        factory = RestChannelServiceClientFactory(connections)
+        super().__init__(channel_service_client_factory=factory)
+
+    async def process(self, request, agent):
+        """Process a FastAPI/Starlette request and return an HttpResponse."""
+        auth_header = request.headers.get("Authorization", "")
+        claims_identity = None
+
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            try:
+                claims_identity = await self._token_validator.validate_token(token)
+            except ValueError:
+                return HttpResponseFactory.unauthorized()
+        elif self._auth_config.CLIENT_ID:
+            return HttpResponseFactory.unauthorized()
+
+        adapted_req = _StarletteRequestAdapter(request, claims_identity)
+        return await self.process_request(adapted_req, agent)
+
+
+_auth_config = AgentAuthConfiguration(
+    auth_type=AuthTypes.client_secret,
+    client_id=os.environ.get("MICROSOFT_APP_ID"),
+    tenant_id=os.environ.get("MICROSOFT_APP_TENANT_ID"),
+    client_secret=os.environ.get("MICROSOFT_APP_PASSWORD"),
 )
-adapter = BotFrameworkAdapter(adapter_settings)
+adapter = CloudAdapter(_auth_config)
 
 
 def init_teams_context(
