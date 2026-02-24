@@ -331,7 +331,7 @@ if (
 
 
 # -------------------------------------------------------------------------------
-#                               TEAMS HANDLER (botbuilder-core)
+#                               TEAMS HANDLER
 # -------------------------------------------------------------------------------
 
 if os.environ.get("TEAMS_APP_ID") and os.environ.get("TEAMS_APP_PASSWORD"):
