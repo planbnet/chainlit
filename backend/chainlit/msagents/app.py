@@ -219,7 +219,7 @@ _auth_config = AgentAuthConfiguration(
     auth_type=AuthTypes.client_secret,
     client_id=os.environ.get("MICROSOFT_APP_ID"),
     tenant_id=os.environ.get("MICROSOFT_APP_TENANT_ID"),
-    client_secret=os.environ.get("MICROSOFT_APP_PASSWORD"),
+    client_secret=os.environ.get("MICROSOFT_APP_SECRET"),
 )
 adapter = CloudAdapter(_auth_config)
 

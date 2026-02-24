@@ -352,7 +352,7 @@ if os.environ.get("TEAMS_APP_ID") and os.environ.get("TEAMS_APP_PASSWORD"):
 #                               MSAGENTS HANDLER (M365 Agents SDK)
 # -------------------------------------------------------------------------------
 
-if os.environ.get("MICROSOFT_APP_ID") and os.environ.get("MICROSOFT_APP_PASSWORD"):
+if os.environ.get("MICROSOFT_APP_ID") and os.environ.get("MICROSOFT_APP_SECRET"):
     from starlette.responses import JSONResponse, Response as StarletteResponse
 
     from chainlit.msagents.app import adapter as msagents_adapter, bot as msagents_bot
