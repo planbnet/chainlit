@@ -349,6 +349,26 @@ if os.environ.get("TEAMS_APP_ID") and os.environ.get("TEAMS_APP_PASSWORD"):
 
 
 # -------------------------------------------------------------------------------
+#                               MSAGENTS HANDLER (M365 Agents SDK)
+# -------------------------------------------------------------------------------
+
+if os.environ.get("MICROSOFT_APP_ID") and os.environ.get("MICROSOFT_APP_SECRET"):
+    from starlette.responses import JSONResponse, Response as StarletteResponse
+
+    from chainlit.msagents.app import adapter as msagents_adapter, bot as msagents_bot
+
+    @router.post("/api/messages")
+    async def msagents_endpoint(req: Request):
+        http_response = await msagents_adapter.process(req, msagents_bot)
+        if http_response.body is not None:
+            return JSONResponse(
+                content=http_response.body,
+                status_code=http_response.status_code,
+            )
+        return StarletteResponse(status_code=http_response.status_code)
+
+
+# -------------------------------------------------------------------------------
 #                               HTTP HANDLERS
 # -------------------------------------------------------------------------------
 
