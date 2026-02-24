@@ -331,17 +331,35 @@ if (
 
 
 # -------------------------------------------------------------------------------
-#                               TEAMS HANDLER
+#                               TEAMS HANDLER (botbuilder-core)
+# -------------------------------------------------------------------------------
+
+if os.environ.get("TEAMS_APP_ID") and os.environ.get("TEAMS_APP_PASSWORD"):
+    from botbuilder.schema import Activity
+
+    from chainlit.teams.app import adapter, bot
+
+    @router.post("/teams/events")
+    async def teams_endpoint(req: Request):
+        body = await req.json()
+        activity = Activity().deserialize(body)
+        auth_header = req.headers.get("Authorization", "")
+        response = await adapter.process_activity(activity, auth_header, bot.on_turn)
+        return response
+
+
+# -------------------------------------------------------------------------------
+#                               MSAGENTS HANDLER (M365 Agents SDK)
 # -------------------------------------------------------------------------------
 
 if os.environ.get("MICROSOFT_APP_ID") and os.environ.get("MICROSOFT_APP_PASSWORD"):
     from starlette.responses import JSONResponse, Response as StarletteResponse
 
-    from chainlit.teams.app import adapter, bot
+    from chainlit.msagents.app import adapter as msagents_adapter, bot as msagents_bot
 
     @router.post("/api/messages")
-    async def teams_endpoint(req: Request):
-        http_response = await adapter.process(req, bot)
+    async def msagents_endpoint(req: Request):
+        http_response = await msagents_adapter.process(req, msagents_bot)
         if http_response.body is not None:
             return JSONResponse(
                 content=http_response.body,

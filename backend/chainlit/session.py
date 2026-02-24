@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from chainlit.types import FileDict
     from chainlit.user import PersistedUser, User
 
-ClientType = Literal["webapp", "copilot", "teams", "slack", "discord"]
+ClientType = Literal["webapp", "copilot", "teams", "slack", "discord", "msagents"]
 
 
 class JSONEncoderIgnoreNonSerializable(json.JSONEncoder):

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "<YOUR_ENTRA_APP_CLIENT_ID>",
+  "packageName": "com.example.chainlit-bot",
+  "developer": {
+    "name": "Your Organization",
+    "websiteUrl": "https://your-app.azurewebsites.net",
+    "privacyUrl": "https://your-app.azurewebsites.net/privacy",
+    "termsOfUseUrl": "https://your-app.azurewebsites.net/terms"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+    "short": "Chainlit Bot",
+    "full": "Chainlit Bot"
+  },
+  "description": {
+    "short": "Chainlit AI assistant",
+    "full": "Chainlit-powered AI assistant integrated with Microsoft Teams"
+  },
+  "accentColor": "#FFFFFF",
+  "bots": [
+    {
+      "botId": "<YOUR_ENTRA_APP_CLIENT_ID>",
+      "scopes": ["personal", "team", "groupChat"],
+      "supportsFiles": false,
+      "isNotificationOnly": false
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": ["your-app.azurewebsites.net"]
+}
