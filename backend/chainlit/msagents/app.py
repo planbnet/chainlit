@@ -4,7 +4,7 @@ import mimetypes
 import os
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import filetype
 
@@ -14,13 +14,10 @@ if TYPE_CHECKING:
 
 import httpx
 from microsoft_agents.activity import (
-    ActionTypes,
     Activity,
     ActivityTypes,
     Attachment,
-    CardAction,
     ChannelAccount,
-    HeroCard,
 )
 from microsoft_agents.hosting.core import (
     MessageFactory,
@@ -36,13 +33,12 @@ from microsoft_agents.hosting.core.authorization import (
 from microsoft_agents.hosting.core.http import HttpAdapterBase, HttpResponseFactory
 
 from chainlit.config import config
-from chainlit.context import ChainlitContext, HTTPSession, context, context_var
+from chainlit.context import ChainlitContext, HTTPSession, context_var
 from chainlit.data import get_data_layer
 from chainlit.element import Element, ElementDict
 from chainlit.emitter import BaseChainlitEmitter
 from chainlit.logger import logger
 from chainlit.message import Message, StepDict
-from chainlit.types import Feedback
 from chainlit.user import PersistedUser, User
 from chainlit.user_session import user_session
 
@@ -87,44 +83,14 @@ class MsAgentsEmitter(BaseChainlitEmitter):
         await self.turn_context.send_activity(Activity(type=ActivityTypes.message, attachments=[attachment]))
 
     async def send_step(self, step_dict: StepDict):
-        if not step_dict["type"] == "assistant_message":
+        if step_dict["type"] != "assistant_message":
             return
 
-        step_type = step_dict.get("type")
-        is_message = step_type in [
-            "user_message",
-            "assistant_message",
-        ]
-        is_empty_output = not step_dict.get("output")
-
-        if is_empty_output or not is_message:
+        if not step_dict.get("output"):
             return
-        else:
-            reply = MessageFactory.text(step_dict["output"])
-            enable_feedback = get_data_layer()
-            if enable_feedback:
-                current_run = context.current_run
-                scorable_id = current_run.id if current_run else step_dict["id"]
-                like_button = CardAction(
-                    type=ActionTypes.message_back,
-                    title="\U0001f44d",
-                    text="like",
-                    value={"feedback": "like", "step_id": scorable_id},
-                )
-                dislike_button = CardAction(
-                    type=ActionTypes.message_back,
-                    title="\U0001f44e",
-                    text="dislike",
-                    value={"feedback": "dislike", "step_id": scorable_id},
-                )
-                card = HeroCard(buttons=[like_button, dislike_button])
-                attachment = Attachment(
-                    content_type="application/vnd.microsoft.card.hero",
-                    content=card.model_dump(by_alias=True, exclude_none=True),
-                )
-                reply.attachments = [attachment]
 
-            await self.turn_context.send_activity(reply)
+        reply = MessageFactory.text(step_dict["output"])
+        await self.turn_context.send_activity(reply)
 
     async def update_step(self, step_dict: StepDict):
         if not step_dict["type"] == "assistant_message":
@@ -425,38 +391,15 @@ async def process_msagents_message(
 
 async def handle_message(turn_context: TurnContext):
     if turn_context.activity.type == ActivityTypes.message:
-        if (
-            turn_context.activity.text == "like"
-            or turn_context.activity.text == "dislike"
-        ):
-            feedback_value: Literal[0, 1] = (
-                0 if turn_context.activity.text == "dislike" else 1
-            )
-            step_id = turn_context.activity.value.get("step_id")
-            if data_layer := get_data_layer():
-                await data_layer.upsert_feedback(
-                    Feedback(forId=step_id, value=feedback_value)
-                )
-            updated_text = "\U0001f44d" if turn_context.activity.text == "like" else "\U0001f44e"
-            # Update the existing message to remove the buttons
-            updated_message = Activity(
-                type=ActivityTypes.message,
-                id=turn_context.activity.reply_to_id,
-                text=updated_text,
-                attachments=[],
-            )
-            await turn_context.update_activity(updated_message)
-        else:
-            # Send typing activity
-            typing_activity = Activity(
-                type=ActivityTypes.typing,
-                from_property=turn_context.activity.recipient,
-                recipient=turn_context.activity.from_property,
-                conversation=turn_context.activity.conversation,
-            )
-            await turn_context.send_activity(typing_activity)
-            thread_name = f"{turn_context.activity.from_property.name} Teams DM {datetime.today().strftime('%Y-%m-%d')}"
-            await process_msagents_message(turn_context, thread_name)
+        typing_activity = Activity(
+            type=ActivityTypes.typing,
+            from_property=turn_context.activity.recipient,
+            recipient=turn_context.activity.from_property,
+            conversation=turn_context.activity.conversation,
+        )
+        await turn_context.send_activity(typing_activity)
+        thread_name = f"{turn_context.activity.from_property.name} Teams DM {datetime.today().strftime('%Y-%m-%d')}"
+        await process_msagents_message(turn_context, thread_name)
 
 
 async def on_turn(turn_context: TurnContext):
